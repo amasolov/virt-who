@@ -23,8 +23,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 import time
 import libvirt
 import threading
+import os
+import subprocess
+import re
 from six.moves import urllib
 from xml.etree import ElementTree
+from io import StringIO
 
 from virtwho.virt import (
     Hypervisor, Guest, VirtError, HostGuestAssociationReport,
@@ -41,11 +45,14 @@ class LibvirtdConfigSection(VirtConfigSection):
 
     VIRT_TYPE = 'libvirt'
     HYPERVISOR_ID = ('uuid', 'hostname')
+    ssh_agent_pid = -1
 
     def __init__(self, section_name, wrapper, *args, **kwargs):
         super(LibvirtdConfigSection, self).__init__(section_name, wrapper, *args, **kwargs)
         # Note: no option is required for this virtualization backend. When no options
         # are specified, then virt-who will try to gather information from localhost
+        self.add_key('ssh_key_password', validation_method=self._validate_unencrypted_password)
+        self.add_key('ssh_key', validation_method=self._validate_non_empty_string)
 
     def _validate_server(self, key):
         """
@@ -92,17 +99,56 @@ class LibvirtdConfigSection(VirtConfigSection):
                 ))
                 path = '/system'
 
+            if scheme == 'qemu+ssh':
+                # check to see if ssh-agent is running
+                # import pdb; pdb.set_trace()
+                if 'SSH_AUTH_SOCK' not in os.environ:
+                    # start ssh-agent
+                    print("Starting ssh-agent")
+                    os.environ.update(self.start_agent())
+                else:
+                    print("ssh-agent already started")
+                if self._values['ssh_key_password']:
+                    # set key password on env
+                    os.environ['SSH_ASKPASS'] = '/tmp/cool.py' # % self._values['ssh_key_password']
+
+                environment = {}
+                environment.update(os.environ)
+                # add ssh key
+                if self._values['ssh_key']:
+                    self.add_ssh_key(self._values['ssh_key'], environment)
+
             self._values[key] = "%(scheme)s://%(username)s%(hostname)s%(path)s?no_tty=1" % {
                 'username': ("%s@" % username) if username else '',
                 'scheme': scheme,
                 'hostname': hostname,
-                'path': path
+                'path': path,
             }
 
         if len(result) == 0:
             return None
         else:
             return result
+
+    def start_agent(self):
+        output = subprocess.check_output(['ssh-agent','-s'])
+        environment = self.parse_agent_env(output)
+        self.ssh_agent_pid = environment['SSH_AGENT_PID']
+        return environment
+
+    def add_ssh_key(self, path, environ):
+        subprocess.Popen(['ssh-add', path], env=environ, stdin=subprocess.PIPE, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+
+    def parse_agent_env(self, output):
+        result = {}
+        for name, value in re.findall(r'([A-Z_]+)=([^;]+);',
+                                      output.decode('ascii')):
+            result[name] = value
+        return result
+
+    def stop_agent(self):
+        print("Killing ssh-agent")
+        subprocess.check_call(['kill', self.ssh_agent_pid])
 
     def _validate_env(self, key):
         """
@@ -175,7 +221,7 @@ class LibvirtdConfigSection(VirtConfigSection):
         :param pass_key: Key of unencrypted password
         :return: None or tuple with warning, when options are wrong
         """
-        if pass_key == 'password':
+        if pass_key == 'password' or pass_key == 'ssh_key_password':
             result = self.__validate_password(pass_key)
         else:
             result = super(LibvirtdConfigSection, self)._validate_unencrypted_password(pass_key)
@@ -209,6 +255,7 @@ class VirEventLoopThread(threading.Thread):
 
     def terminate(self):
         self._terminated.set()
+        # kill ssh-agent
 
 
 def libvirt_cred_request(credentials, config):
