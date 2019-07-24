@@ -63,7 +63,7 @@ class HypervConfigSection(VirtConfigSection):
 
         result = []
         if key not in self._values:
-            self._values[key] = ''
+            return None
         else:
             url = self._values[key]
 
