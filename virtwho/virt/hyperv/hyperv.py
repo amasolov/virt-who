@@ -59,42 +59,45 @@ class HypervConfigSection(VirtConfigSection):
         self.add_key('password', validation_method=self._validate_unencrypted_password, required=True)
 
     def _validate_server(self, key):
-        url_altered = False
+        error = super(HypervConfigSection, self)._validate_server(key)
+        if error is None:
+            url_altered = False
 
-        result = []
-        if key not in self._values:
-            return None
-        else:
-            url = self._values[key]
+            result = []
+            if key not in self._values:
+                self._values[key] = ''
+            else:
+                url = self._values[key]
 
-            if "//" not in url:
-                url_altered = True
-                url = "//" + url
-            parsed = urllib.parse.urlsplit(url, "http")
-            if ":" not in parsed[1]:
-                url_altered = True
-                if parsed[0] == "https":
-                    self.host = parsed[1] + ":5986"
+                if "//" not in url:
+                    url_altered = True
+                    url = "//" + url
+                parsed = urllib.parse.urlsplit(url, "http")
+                if ":" not in parsed[1]:
+                    url_altered = True
+                    if parsed[0] == "https":
+                        self.host = parsed[1] + ":5986"
+                    else:
+                        self.host = parsed[1] + ":5985"
                 else:
-                    self.host = parsed[1] + ":5985"
+                    self.host = parsed[1]
+                if parsed[2] == "":
+                    url_altered = True
+                    path = "wsman"
+                else:
+                    path = parsed[2]
+                self.url = urllib.parse.urlunsplit((parsed[0], self.host, path, "", ""))
+                self._values['url'] = self.url
+                if url_altered:
+                    result.append((
+                        'info',
+                        "The original server URL was incomplete. It has been enhanced to %s" % self.url
+                    ))
+            if len(result) == 0:
+                return None
             else:
-                self.host = parsed[1]
-            if parsed[2] == "":
-                url_altered = True
-                path = "wsman"
-            else:
-                path = parsed[2]
-            self.url = urllib.parse.urlunsplit((parsed[0], self.host, path, "", ""))
-            self._values['url'] = self.url
-            if url_altered:
-                result.append((
-                    'info',
-                    "The original server URL was incomplete. It has been enhanced to %s" % self.url
-                ))
-        if len(result) == 0:
-            return None
-        else:
-            return result
+                return result
+        return error
 
 
 class HyperVAuth(AuthBase):
