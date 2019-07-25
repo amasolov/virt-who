@@ -1106,6 +1106,7 @@ class VirtConfigSection(ConfigSection):
         Try to validate server definition
         """
         result = None
+        import pdb; pdb.set_trace()
         # Server option must be there for ESX, RHEVM, and HYPERV, XEN
         if key not in self._values or len(self._values[key]) == 0:
             if 'type' in self._values and self._values['type'] in ['libvirt', 'vdsm', 'fake']:
