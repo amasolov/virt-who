@@ -627,6 +627,7 @@ class ConfigSection(collections.MutableMapping):
         """
         Steps necessary to do after evaluation
         """
+        import pdb;pdb.set_trace()
         self.check_required_keys()
         self.reset_to_defaults()
         self.apply_destinations()

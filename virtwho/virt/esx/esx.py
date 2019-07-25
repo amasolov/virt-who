@@ -538,6 +538,7 @@ class EsxConfigSection(VirtConfigSection):
         self.add_key('exclude_host_parents', validation_method=self._validate_filter, default=None)
 
     def _validate_server(self, key):
+        import pdb;pdb.set_trace()
         error = super(EsxConfigSection, self)._validate_server(key)
         if error is None:
             # Url must contain protocol (usually https://)
