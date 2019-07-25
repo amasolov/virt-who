@@ -59,6 +59,7 @@ class HypervConfigSection(VirtConfigSection):
         self.add_key('password', validation_method=self._validate_unencrypted_password, required=True)
 
     def _validate_server(self, key):
+        import pdb;pdb.set_trace()
         error = super(HypervConfigSection, self)._validate_server(key)
         if error is None:
             url_altered = False
