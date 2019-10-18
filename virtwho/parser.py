@@ -47,7 +47,6 @@ SAT5_VM_DISPATCHER = {
     'rhevm': {'owner': False, 'server': True, 'username': True},
     'hyperv': {'owner': False, 'server': True, 'username': True},
     'kubevirt': {'owner': False, 'server': False, 'username': False, 'kubeconfig': True, 'kubeversion': False, 'insecure': False},
-    'ahv' : {'owner': False, 'server': False, 'username': False},
 }
 
 SAT6_VM_DISPATCHER = {
@@ -57,7 +56,6 @@ SAT6_VM_DISPATCHER = {
     'rhevm': {'owner': True, 'server': True, 'username': True},
     'hyperv': {'owner': True, 'server': True, 'username': True},
     'kubevirt': {'owner': True, 'server': False, 'username': False, 'kubeconfig': True, 'kubeversion': False, 'insecure': False},
-    'ahv' : {'owner': False, 'server': False, 'username': False},
 }
 
 class OptionError(Exception):
@@ -75,7 +73,7 @@ class StoreGroupArgument(Action):
     def __call__(self, parser, namespace, values, option_string=None):
         """
         When the argument from group is used, then this argument has to match
-        virtualization backend [--libvirt|--esx|--rhevm|--hyperv|--xen|--kubevirt|--ahv]
+        virtualization backend [--libvirt|--esx|--rhevm|--hyperv|--xen|--kubevirt]
         """
         options = vars(namespace)
         virt_type = options['virt_type']
