@@ -20,7 +20,7 @@ from __future__ import print_function
 #
 
 from __future__ import absolute_import
-from time import time
+from time import time, sleep
 from . import XenAPI
 from .XenAPI import NewMaster, Failure
 from collections import defaultdict
@@ -45,6 +45,11 @@ class XenConfigSection(VirtConfigSection):
         self.add_key('server', validation_method=self._validate_server, required=True)
         self.add_key('username', validation_method=self._validate_username, required=True)
         self.add_key('password', validation_method=self._validate_unencrypted_password, required=True)
+        # strange issue with XEN API and the use of this environment variable
+
+#        no_proxy = self.get('no_proxy', '').strip()
+#        if len(no_proxy) > 0 and not no_proxy.startswith(',') and no_proxy != '*':
+#            self.add_key('no_proxy', ',' + no_proxy)
 
     def _validate_server(self, key):
         """
@@ -97,6 +102,7 @@ class Xen(virt.Virt):
         self.config = config
         self.ignored_guests = set()
         self.filter = None
+        self.token = ''
 
     def _prepare(self):
         """ Prepare for obtaining information from Xen server. """
@@ -190,62 +196,31 @@ class Xen(virt.Virt):
                     facts=facts))
         return mapping
 
-    def _wait(self, token, timeout):
-        try:
-            # Do an active waiting because current thread might get terminated
-            end_time = time() + timeout
-            while time() < end_time and not self.is_terminated():
-                try:
-                    response = self.session.xenapi.event_from(
-                        self.event_types,
-                        token,
-                        1.0)
-                    token = response['token']
-                    if len(response['events']) == 0:
-                        # No events, continue to wait
-                        continue
-                    return response
-                except Failure as e:
-                    if 'timeout' not in e.details:
-                        raise
-        except Exception:
-            self.logger.exception("Waiting on XEN events failed: ")
-        return {
-            'events': [],
-            'token': token
-        }
-
     def _run(self):
-        self._prepare()
 
-        self.hosts = defaultdict(virt.Hypervisor)
-        self.vms = defaultdict(virt.Guest)
-        next_update = time()
-        initial = True
-        token = ''
+        try:
+            self.hosts = defaultdict(virt.Hypervisor)
+            self.vms = defaultdict(virt.Guest)
 
-        while self._oneshot or not self.is_terminated():
-            delta = next_update - time()
-            if initial or delta > 0:
-                # Wait for update
-                wait_result = self._wait(token, 60 if initial else delta)
-                if wait_result:
-                    events = wait_result['events']
-                    token = wait_result['token']
-                else:
-                    events = []
-                    token = ''
+            self.logger.debug("logging in")
+            self._prepare()
+            result = self.session.xenapi.event_from(
+                self.event_types,
+                self.token,
+                10.0)
+            if result:
+                events = result['events']
+                self.token = result['token']
             else:
                 events = []
 
-            if initial or len(events) > 0 or delta > 0:
+            if len(events) > 0:
                 assoc = self.getHostGuestMapping()
                 self._send_data(virt.HostGuestAssociationReport(self.config, assoc))
-                initial = False
 
-            if self._oneshot:
-                break
-            else:
-                next_update = time() + self.interval
-
-        self.cleanup()
+        except XenAPI.Failure as e:
+            self.logger.exception(e)
+            raise e
+        finally:
+            self.logger.debug("logging out")
+            self.session.xenapi.session.logout()

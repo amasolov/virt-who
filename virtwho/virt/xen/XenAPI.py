@@ -47,7 +47,7 @@ from __future__ import print_function
 # --------------------------------------------------------------------
 
 from six.moves import xmlrpc_client
-
+import socket
 
 
 API_VERSION_1_1 = '1.1'
@@ -141,14 +141,20 @@ class Session(xmlrpc_client.ServerProxy):
                 500, 'Tried 3 times to get a valid session, but failed')
 
     def _login(self, method, params):
-        result = _parse_result(getattr(self, 'session.%s' % method)(*params))
-        if result == _RECONNECT_AND_RETRY:
-            raise xmlrpc_client.Fault(
-                500, 'Received SESSION_INVALID when logging in')
-        self._session = result
-        self.last_login_method = method
-        self.last_login_params = params
-        self.API_version = self._get_api_version()
+        try:
+            result = _parse_result(getattr(self, 'session.%s' % method)(*params))
+            if result == _RECONNECT_AND_RETRY:
+                raise xmlrpc_client.Fault(
+                    500, 'Received SESSION_INVALID when logging in')
+            self._session = result
+            self.last_login_method = method
+            self.last_login_params = params
+            self.API_version = self._get_api_version()
+        except socket.error as e:
+            if e.errno == socket.errno.ETIMEDOUT:
+                raise xmlrpc_client.Fault(504, 'The connection timed out')
+            else:
+                raise e
 
     def _logout(self):
         try:
